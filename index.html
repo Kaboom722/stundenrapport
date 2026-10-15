@@ -209,6 +209,28 @@
     table.report tr{break-inside:avoid}
   }
 
+  /* Login-Overlay + Sync */
+  .login-overlay{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px}
+  .login-card{width:min(380px,100%);background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:26px 24px;box-shadow:var(--shadow)}
+  .login-logo{font-size:1.8rem;text-align:center}
+  .login-card h2{margin:.4rem 0 .2rem;text-align:center;font-size:1.3rem}
+  .login-sub{color:var(--muted);font-size:.86rem;text-align:center;margin:0 0 18px;line-height:1.4}
+  .login-field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+  .login-field label{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  .login-field input{font:inherit;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:10px 12px;color:var(--fg)}
+  .login-field input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+  .login-err{background:var(--neg-soft);border:1px solid var(--neg);color:var(--neg);border-radius:8px;padding:8px 11px;font-size:.83rem;margin-bottom:12px}
+  .login-btn{width:100%;font:inherit;font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:12px;cursor:pointer;font-size:.95rem}
+  .login-btn:disabled{opacity:.6;cursor:default}
+  .login-link{width:100%;background:none;border:none;color:var(--accent);font:inherit;font-size:.85rem;cursor:pointer;margin-top:12px;padding:6px}
+  .login-skip{width:100%;background:none;border:none;color:var(--muted);font:inherit;font-size:.79rem;cursor:pointer;margin-top:2px;padding:6px}
+  .login-skip:hover{color:var(--fg)}
+  .syncbox{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .syncstat{font-size:.84rem;color:var(--muted)}
+  .syncstat.ok{color:var(--pos)} .syncstat.err{color:var(--neg)}
+  #logoutBtn{font:inherit;font-size:.82rem;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:7px 12px;cursor:pointer}
+  #logoutBtn:hover{border-color:var(--neg);color:var(--neg)}
+
   /* Modal */
   .backdrop{position:fixed;inset:0;background:#05080d99;backdrop-filter:blur(2px);display:none;z-index:50}
   .backdrop.open{display:block}
@@ -290,6 +312,11 @@
       <div class="field"><label for="setPensum">Pensum (%)</label><input class="num" type="number" id="setPensum" min="1" max="100" step="1"></div>
       <div class="soll">Wochen-Soll: <b id="setSoll"></b> Std.</div>
     </div>
+    <div id="syncSection">
+      <h3 style="margin-top:18px">Synchronisation (Geräte)</h3>
+      <div class="syncbox"><span class="syncstat" id="syncStatus">—</span><button id="logoutBtn" hidden>Abmelden</button></div>
+    </div>
+
     <h3 style="margin-top:18px">Backup (Daten sichern / übertragen)</h3>
     <div class="backup">
       <button id="btnExport">⬇ Backup exportieren</button>
@@ -378,12 +405,30 @@
   </div>
 </div>
 
+<div id="loginOverlay" class="login-overlay" hidden>
+  <div class="login-card">
+    <div class="login-logo">⏱</div>
+    <h2>Stundenrapport</h2>
+    <p class="login-sub" id="loginSub">Anmelden, um deine Daten auf allen Geräten zu synchronisieren.</p>
+    <div class="login-field"><label for="loginEmail">E-Mail</label><input type="email" id="loginEmail" autocomplete="username" inputmode="email"></div>
+    <div class="login-field"><label for="loginPass">Passwort</label><input type="password" id="loginPass" autocomplete="current-password"></div>
+    <div class="login-err" id="loginErr" hidden></div>
+    <button class="login-btn" id="loginBtn">Anmelden</button>
+    <button class="login-link" id="toggleSignup">Noch kein Konto? Registrieren</button>
+    <button class="login-skip" id="loginSkip">Nur auf diesem Gerät (ohne Sync)</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 const KEY="stundenrapport_v1";
 const MONTHS=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 const WDAYS=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 const EVCOL=["var(--ev1)","var(--ev2)","var(--ev3)","var(--ev4)","var(--ev5)","var(--ev6)"];
 const DEFAULTS={weekly:42,pensum:80};
+const SB_URL="https://qrnlwlnivlbyuvykynqn.supabase.co";
+const SB_KEY="sb_publishable_iwUmwUO5q1IQFD475AHkWw_J3dgMDYq";
+const SYNC_ENABLED=/(^|\.)github\.io$/.test(location.hostname);
 
 let state={data:{},settings:{...DEFAULTS},seeded:false};
 let view=new Date(); view.setDate(1);
@@ -398,7 +443,7 @@ function load(){
   }catch(e){}
   return false;
 }
-function save(){ try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){} }
+function save(){ try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){} if(typeof schedulePush==="function") schedulePush(); }
 
 /* ---------- Helpers ---------- */
 const pad=n=>String(n).padStart(2,"0");
@@ -781,11 +826,99 @@ function seed(){
   state.seeded=true; save();
 }
 
+/* ---------- Supabase-Sync ---------- */
+let sb=null, sbUser=null, pushTimer=null, applyingRemote=false, signupMode=false, rtChannel=null;
+const $=id=>document.getElementById(id);
+function syncStatus(t,c){ const el=$("syncStatus"); if(el){el.textContent=t; el.className="syncstat "+(c||"");} }
+function showLoginErr(m){ const e=$("loginErr"); e.textContent=m; e.hidden=false; }
+function updateLoginMode(){
+  $("loginBtn").textContent=signupMode?"Registrieren":"Anmelden"; $("loginBtn").disabled=false;
+  $("toggleSignup").textContent=signupMode?"Schon ein Konto? Anmelden":"Noch kein Konto? Registrieren";
+  $("loginSub").textContent=signupMode?"Konto erstellen, um deine Daten geräteübergreifend zu sichern.":"Anmelden, um deine Daten auf allen Geräten zu synchronisieren.";
+}
+function showLogin(){ $("loginOverlay").hidden=false; }
+function hideLogin(){ $("loginOverlay").hidden=true; }
+function loadStateInto(d){
+  state.data=d.data||{}; if(d.settings) state.settings={...DEFAULTS,...d.settings}; state.seeded=true;
+  applyingRemote=true; save(); applyingRemote=false;
+  setWeekly.value=state.settings.weekly; setPensum.value=state.settings.pensum; refreshSoll();
+}
+async function initSync(){
+  if(!SYNC_ENABLED || !window.supabase){ if($("syncSection")) $("syncSection").hidden=true; return; }
+  try{ sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}}); }
+  catch(e){ if($("syncSection")) $("syncSection").hidden=true; return; }
+  syncStatus("Nicht angemeldet","");
+  $("loginBtn").onclick=doLogin;
+  $("toggleSignup").onclick=()=>{ signupMode=!signupMode; $("loginErr").hidden=true; updateLoginMode(); };
+  $("loginSkip").onclick=()=>{ hideLogin(); syncStatus("Nur lokal (nicht angemeldet)",""); };
+  $("logoutBtn").onclick=doLogout;
+  ["loginEmail","loginPass"].forEach(id=>$(id).addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); doLogin(); } }));
+  sb.auth.onAuthStateChange((_e,s)=>{ if(!s){ sbUser=null; $("logoutBtn").hidden=true; } });
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session && session.user){ await onLoggedIn(session.user); } else { showLogin(); }
+  }catch(e){ showLogin(); }
+}
+async function doLogin(){
+  const email=$("loginEmail").value.trim(), pass=$("loginPass").value;
+  $("loginErr").hidden=true;
+  if(!email||!pass){ showLoginErr("Bitte E-Mail und Passwort eingeben."); return; }
+  $("loginBtn").disabled=true; $("loginBtn").textContent="…";
+  try{
+    const res = signupMode ? await sb.auth.signUp({email,password:pass}) : await sb.auth.signInWithPassword({email,password:pass});
+    if(res.error){ showLoginErr(res.error.message); }
+    else if(res.data && res.data.session){ await onLoggedIn(res.data.session.user); }
+    else if(signupMode){ showLoginErr("Konto erstellt. Falls nötig E-Mail bestätigen, dann anmelden."); signupMode=false; }
+    else { showLoginErr("Anmeldung fehlgeschlagen."); }
+  }catch(e){ showLoginErr("Fehler: "+(e.message||e)); }
+  updateLoginMode();
+}
+async function doLogout(){
+  try{ await sb.auth.signOut(); }catch(e){}
+  if(rtChannel){ try{sb.removeChannel(rtChannel);}catch(e){} rtChannel=null; }
+  sbUser=null; $("logoutBtn").hidden=true; syncStatus("Abgemeldet",""); showLogin();
+}
+async function onLoggedIn(user){
+  sbUser=user; hideLogin(); $("logoutBtn").hidden=false;
+  syncStatus("Angemeldet: "+(user.email||"")+" · lade …","");
+  try{
+    const { data, error } = await sb.from("rapport_state").select("data,settings").eq("user_id",user.id).maybeSingle();
+    if(error) throw error;
+    if(data){ loadStateInto(data); render(); syncStatus("Synchronisiert ✓ ("+(user.email||"")+")","ok"); }
+    else { await pushRemote(); }   // erstes Mal: lokale Daten hochladen
+    subscribeRealtime();
+  }catch(e){ syncStatus("Sync-Fehler: "+(e.message||e),"err"); }
+}
+async function pushRemote(){
+  if(!sb||!sbUser) return;
+  try{
+    const { error } = await sb.from("rapport_state").upsert({user_id:sbUser.id,data:state.data,settings:state.settings,updated_at:new Date().toISOString()},{onConflict:"user_id"});
+    if(error) throw error;
+    syncStatus("Synchronisiert ✓ ("+(sbUser.email||"")+")","ok");
+  }catch(e){ syncStatus("Sync-Fehler: "+(e.message||e),"err"); }
+}
+function schedulePush(){
+  if(!sb||!sbUser||applyingRemote) return;
+  syncStatus("Speichere …","");
+  clearTimeout(pushTimer); pushTimer=setTimeout(pushRemote,800);
+}
+function subscribeRealtime(){
+  if(!sb||!sbUser) return;
+  if(rtChannel){ try{sb.removeChannel(rtChannel);}catch(e){} }
+  rtChannel=sb.channel("rapport_"+sbUser.id)
+    .on("postgres_changes",{event:"*",schema:"public",table:"rapport_state",filter:"user_id=eq."+sbUser.id},(payload)=>{
+      if(openKey) return; // laufende Bearbeitung nicht stören
+      const row=payload.new; if(!row||!row.data) return;
+      loadStateInto(row); render(); syncStatus("Aktualisiert ✓","ok");
+    }).subscribe();
+}
+
 /* ---------- Init ---------- */
 if(!load()){ seed(); }
 setWeekly.value=state.settings.weekly; setPensum.value=state.settings.pensum; refreshSoll();
 reportRange=monthRange(view);
 render();
+initSync();
 </script>
 </body>
 </html>
