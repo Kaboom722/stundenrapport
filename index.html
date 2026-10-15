@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1420">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stundenrapport">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Stundenrapport</title>
+<style>
+  html{color-scheme:light}
+  html,body{margin:0}
+  :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<style>
+  /* Layout: grosszügiger Apple-artiger Monatskalender im dunklen Finviz-Look; Kennzahlen oben, Wochenauswertung kompakt darunter. */
+  :root{
+    /* Dunkel (Standard, Finviz-Stil) */
+    --bg:#0e1420; --surface:#151d2b; --surface-2:#1a2433; --surface-3:#202c3d;
+    --fg:#e6edf6; --muted:#8694a7; --faint:#5c6a7e;
+    --line:#26303f; --line-strong:#32405380;
+    --accent:#3e9bff; --accent-soft:#3e9bff1f;
+    --pos:#30c27e; --pos-soft:#30c27e1c;
+    --neg:#f0616d; --neg-soft:#f0616d1c;
+    --weekend:#121a27;
+    --ev1:#3e9bff; --ev2:#27c3d6; --ev3:#30c27e; --ev4:#e0a33e; --ev5:#9b7bff; --ev6:#f0616d;
+    --today:#3e9bff;
+    --shadow:0 1px 2px #0006,0 12px 30px #0007;
+    --r:12px;
+    --font-ui:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+    color-scheme:dark;
+  }
+  /* Bewusst durchgehend dunkel (Finviz-Look) — kein Light-Mode. */
+
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1600px;margin:0 auto;padding-inline:20px;padding-block:22px 54px}
+  .num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+
+  /* Header */
+  header.app{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
+    padding-bottom:16px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+  .app .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .app h1{font-size:1.5rem;font-weight:700;letter-spacing:-.02em;margin:0}
+  .app .sub{color:var(--muted);font-size:.88rem}
+  .gear{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);color:var(--fg);
+    border-radius:8px;padding:8px 13px;font:inherit;font-size:.84rem;cursor:pointer}
+  .gear:hover{border-color:var(--accent);color:var(--accent)}
+  .gear .pensum{color:var(--muted)}
+
+  /* Monatsnavigation */
+  .toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+  .monthbar{display:flex;align-items:center;gap:12px}
+  .monthbar .label{font-size:1.35rem;font-weight:700;letter-spacing:-.01em;min-width:7.5em}
+  .nav{display:flex;gap:6px}
+  .nav button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);
+    color:var(--fg);font-size:1.05rem;cursor:pointer;display:grid;place-items:center}
+  .nav button:hover{border-color:var(--accent);color:var(--accent)}
+  .today-btn{font:inherit;font-size:.84rem;font-weight:600;background:var(--surface);border:1px solid var(--line);
+    color:var(--fg);cursor:pointer;padding:7px 14px;border-radius:8px}
+  .today-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* Kennzahlen */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 15px;position:relative;overflow:hidden}
+  .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+  .tile.saldo.pos::before{background:var(--pos)} .tile.saldo.neg::before{background:var(--neg)}
+  .tile .k{font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+  .tile .v{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:1.5rem;font-weight:500;margin-top:5px;line-height:1}
+  .tile .v small{font-size:.72rem;color:var(--muted);font-family:var(--font-ui);margin-left:3px}
+  .tile.saldo.pos .v{color:var(--pos)} .tile.saldo.neg .v{color:var(--neg)}
+  @media(max-width:640px){.tiles{grid-template-columns:repeat(2,1fr)}}
+
+  /* Beispiel-Banner */
+  .banner{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--accent-soft);border:1px solid var(--accent);
+    border-radius:10px;padding:9px 14px;margin-bottom:16px;font-size:.85rem}
+  .banner b{color:var(--accent)}
+  .banner button{margin-left:auto;font:inherit;font-size:.8rem;background:var(--surface);border:1px solid var(--line);
+    border-radius:7px;padding:5px 11px;cursor:pointer;color:var(--fg)}
+  .banner button:hover{border-color:var(--accent)}
+
+  /* Kalender */
+  .cal{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:22px}
+  .cal .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+  .cal .dow span{padding:9px 12px;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;background:var(--surface-2)}
+  .cal .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--line)}
+  .day{min-height:122px;min-width:0;padding:6px 7px 7px;
+    display:flex;flex-direction:column;gap:4px;cursor:pointer;background:var(--surface);text-align:left;font:inherit;color:inherit;overflow:hidden}
+  .day.wknd{background:var(--weekend)}
+  .day:hover{background:var(--surface-2)}
+  .day.out{color:var(--faint);opacity:.72}
+  .day.out .ev{opacity:.6}
+  .dnrow{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .day .dn{font-family:var(--font-num);font-size:.76rem;font-weight:600;display:inline-flex;align-items:center;justify-content:center;
+    min-width:1.5em;height:1.5em;padding:0 .3em;border-radius:999px}
+  .day.today .dn{background:var(--today);color:#fff}
+  .day .dtot{font-family:var(--font-num);font-size:.6rem;font-weight:600;color:var(--accent)}
+  .day.today .dtot{color:var(--today)}
+  .events{display:flex;flex-direction:column;gap:2px;min-height:0;min-width:0}
+  .ev{display:flex;align-items:center;gap:4px;background:var(--surface-2);border-radius:4px;padding:1px 4px 1px 3px;min-width:0}
+  .ev .bar{width:2px;align-self:stretch;min-height:11px;border-radius:2px;flex:0 0 auto;background:var(--ev1)}
+  .ev .evt{font-size:.63rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0;line-height:1.35}
+  .ev .evtime{font-family:var(--font-num);font-size:.57rem;color:var(--muted);flex:0 0 auto}
+  .more{font-size:.6rem;color:var(--muted);font-weight:600;padding-left:4px}
+  .day .addhint{margin-top:auto;font-size:1rem;color:transparent}
+  .day:hover .addhint{color:var(--faint)}
+  @media(max-width:720px){
+    .day{min-height:92px;padding:5px 4px}
+    .cal .dow span{padding:8px 6px;text-align:center}
+    .ev{padding:1px 4px}
+    .ev .evtime{display:none}
+    .ev .evt{font-size:.66rem}
+  }
+  @media(max-width:460px){
+    .day{min-height:76px}
+    .ev .evt{font-size:.62rem}
+  }
+
+  /* Wochenauswertung (kompakt) */
+  .weeks-wrap{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+  .weeks-sum{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;padding:11px 15px;font-weight:600;font-size:.9rem}
+  .weeks-sum::-webkit-details-marker{display:none}
+  .weeks-sum .chev{color:var(--muted);transition:transform .15s;font-size:.8rem}
+  details[open] .weeks-sum .chev{transform:rotate(90deg)}
+  .weeks-sum .ssaldo{margin-left:auto;font-family:var(--font-num);font-weight:600}
+  .weeks-sum .ssaldo.pos{color:var(--pos)} .weeks-sum .ssaldo.neg{color:var(--neg)}
+  .weeks-body{border-top:1px solid var(--line);overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.82rem}
+  thead th{text-align:right;font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;
+    padding:8px 15px;border-bottom:1px solid var(--line);background:var(--surface-2);white-space:nowrap}
+  thead th:first-child,tbody td:first-child,tfoot td:first-child{text-align:left}
+  tbody td{padding:8px 15px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  tbody .kw{font-weight:600} tbody .range{font-family:var(--font-ui);color:var(--muted);font-size:.78rem;margin-left:5px}
+  .saldo-cell.pos{color:var(--pos);font-weight:600} .saldo-cell.neg{color:var(--neg);font-weight:600}
+  tfoot td{padding:9px 15px;text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:700;
+    border-top:1px solid var(--line-strong);background:var(--surface-2)}
+  tfoot td:first-child{font-family:var(--font-ui)}
+  .wk-note{color:var(--faint);font-size:.74rem;padding:9px 15px;border-top:1px solid var(--line)}
+
+  /* Ansicht-Umschalter + Auswertung */
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:2px;gap:2px}
+  .seg button{font:inherit;font-size:.84rem;font-weight:600;border:none;background:none;color:var(--muted);cursor:pointer;padding:6px 14px;border-radius:7px}
+  .seg button.active{background:var(--accent);color:#fff}
+  .rbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .rbar button{font:inherit;font-size:.82rem;font-weight:600;background:var(--surface);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px 13px;cursor:pointer}
+  .rbar button:hover{border-color:var(--accent);color:var(--accent)}
+  .report-wrap{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+  .report-scroll{overflow-x:auto}
+  table.report{width:100%;border-collapse:collapse;font-size:.86rem}
+  table.report thead th{background:var(--surface-2);text-align:left;font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--muted);font-weight:600;padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.report th.rnum,table.report td.rh,table.report td.rw,table.report td.rtot,table.report td.rkm{text-align:right;font-family:var(--font-num);font-variant-numeric:tabular-nums;white-space:nowrap}
+  table.report td.rh{color:var(--accent);font-weight:600}
+  table.report td.rw{color:var(--ev2);font-weight:600}
+  table.report td.rtot{color:var(--neg);font-weight:700}
+  table.report td.rsaldo{font-family:var(--font-num);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600;text-align:right}
+  table.report td.rsaldo.pos{color:var(--pos)}
+  table.report td.rsaldo.neg{color:var(--neg)}
+  table.report td.rt{font-family:var(--font-num);color:var(--muted);white-space:nowrap}
+  table.report td{padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.report tr.rday td{background:var(--surface-2);font-weight:700;font-size:.82rem;padding:9px 14px;border-top:1px solid var(--line-strong)}
+  table.report tr.rsub td{color:var(--muted);font-weight:600;border-bottom:1px solid var(--line-strong)}
+  table.report td.rfall{min-width:12em;line-height:1.4}
+  table.report td.rcopy{width:1%;text-align:center}
+  .cpos{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;min-width:28px;height:26px;cursor:pointer;font-size:.78rem}
+  .cpos:hover{border-color:var(--accent);color:var(--accent)}
+  table.report tfoot td{padding:11px 14px;font-weight:700;background:var(--surface-2);border-top:2px solid var(--line-strong)}
+  table.report tfoot td.rh,table.report tfoot td.rkm{font-family:var(--font-num);text-align:right}
+  .report-empty{padding:26px 14px;text-align:center;color:var(--muted)}
+  .rnote{color:var(--faint);font-size:.78rem;margin-top:10px;line-height:1.5}
+  .report-title{font-size:1.05rem;font-weight:700;margin:0 0 12px;letter-spacing:-.01em}
+  .rpresets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px}
+  .rpresets button{font:inherit;font-size:.82rem;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:7px 12px;cursor:pointer}
+  .rpresets button:hover{border-color:var(--accent);color:var(--accent)}
+  .rdates{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px}
+  .rdates .field{flex:1 1 160px}
+  .rwarn{color:var(--neg);font-size:.82rem;margin-top:10px}
+
+  @media print{
+    @page{margin:12mm}
+    header.app,.toolbar,.tiles,#weeksWrap,.cal,.rbar,.rnote,footer.note,.settings,.backdrop,.modal{display:none!important}
+    .wrap{max-width:none;padding:0}
+    body{background:#fff;color:#000}
+    #reportView{display:block!important}
+    .report-title{display:block;color:#000;margin-bottom:10px}
+    .report-wrap{border:1px solid #999}
+    .report-scroll{overflow:visible!important}
+    table.report{font-size:10pt;width:100%}
+    table.report td,table.report th{padding:5px 7px}
+    table.report td.rfall{min-width:0;white-space:normal;word-break:break-word;overflow-wrap:anywhere}
+    table.report thead th,table.report tr.rday td,table.report tr.rsub td,table.report tfoot td{background:#eee!important;color:#000}
+    table.report td{border-color:#ccc}
+    table.report td.rh{color:#1446a0!important}
+    table.report td.rw{color:#0a6b78!important}
+    table.report td.rtot{color:#c00!important}
+    .cpos{display:none!important}
+    table.report td.rcopy{width:0;padding:0}
+    table.report tr{break-inside:avoid}
+  }
+
+  /* Modal */
+  .backdrop{position:fixed;inset:0;background:#05080d99;backdrop-filter:blur(2px);display:none;z-index:50}
+  .backdrop.open{display:block}
+  .modal{position:fixed;z-index:51;left:50%;top:50%;transform:translate(-50%,-50%);width:min(580px,calc(100vw - 28px));
+    max-height:calc(100vh - 56px);display:none;flex-direction:column;background:var(--surface);border:1px solid var(--line);
+    border-radius:16px;box-shadow:0 24px 60px #05080db0;overflow:hidden}
+  .modal.open{display:flex}
+  .modal header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+  .modal header .mt{font-weight:700;font-size:1rem}
+  .modal header .md{color:var(--muted);font-size:.76rem;margin-top:1px}
+  .modal .close{width:32px;height:32px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--fg);
+    font-size:1.05rem;cursor:pointer}
+  .modal .close:hover{border-color:var(--neg);color:var(--neg)}
+  .modal .body{padding:12px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+  .entry{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--surface-2);display:flex;flex-direction:column;gap:7px}
+  .erow{display:flex;gap:9px;align-items:flex-end;flex-wrap:wrap}
+  .field{display:flex;flex-direction:column;gap:3px}
+  .field label{font-size:.61rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  .field input{font:inherit;background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:6px 9px;color:var(--fg);width:100%}
+  .field input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+  .field.time input{font-family:var(--font-num);width:6.4em}
+  .field.task{flex:1 1 100%;min-width:0}
+  .field.km input{font-family:var(--font-num);width:5em;text-align:right}
+  .field.weg input{font-family:var(--font-num);width:6.4em}
+  .entry .calc{font-family:var(--font-num);font-size:.8rem;font-weight:600;color:var(--accent);padding-bottom:7px;min-width:3.2em;text-align:right}
+  .entry .calc.bad{color:var(--neg)}
+  .entry .wcalc{font-family:var(--font-num);font-size:.78rem;font-weight:600;color:var(--ev2);padding-bottom:7px;min-width:3.2em}
+  .entry .etot{margin-left:auto;font-family:var(--font-num);font-size:.8rem;font-weight:600;color:var(--neg);padding-bottom:7px;white-space:nowrap}
+  .entry .del{margin-left:auto;width:32px;height:32px;border-radius:7px;border:1px solid var(--line);background:var(--surface);
+    color:var(--muted);cursor:pointer;font-size:.95rem;align-self:flex-end}
+  .entry .del:hover{border-color:var(--neg);color:var(--neg)}
+  .taskrow{display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px}
+  .taskrow .wc{font-size:.61rem;color:var(--muted)}
+  .modal .foot{padding:12px 16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .savebtn{font:inherit;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:9px;padding:9px 20px;cursor:pointer}
+  .savebtn:hover{filter:brightness(1.08)}
+  .addbtn{font:inherit;font-weight:600;background:var(--neg-soft);border:1px solid var(--neg);color:var(--neg);
+    border-radius:9px;padding:9px 16px;cursor:pointer}
+  .addbtn:disabled{opacity:.4;cursor:not-allowed}
+  .foot .daytot{flex:1;text-align:center;color:var(--muted);font-size:.82rem}
+  .foot .daytot b{color:var(--fg);font-family:var(--font-num)}
+  .noentries{color:var(--muted);text-align:center;padding:16px;font-size:.9rem}
+
+  /* Settings */
+  .settings{display:none;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:18px}
+  .settings.open{display:block}
+  .settings h3{margin:0 0 12px;font-size:.92rem}
+  .settings .row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+  .settings .field input{width:7em}
+  .settings .soll{color:var(--muted);font-size:.84rem;padding-bottom:9px}
+  .settings .soll b{color:var(--accent);font-family:var(--font-num)}
+  .settings .reset{margin-top:14px;font:inherit;font-size:.82rem;background:var(--neg-soft);border:1px solid var(--neg);color:var(--neg);
+    border-radius:8px;padding:8px 14px;cursor:pointer}
+  .backup{display:flex;flex-wrap:wrap;gap:8px}
+  .backup button{font:inherit;font-size:.83rem;font-weight:600;background:var(--surface-2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px 13px;cursor:pointer}
+  .backup button:hover{border-color:var(--accent);color:var(--accent)}
+  #importBox{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+  #importText{width:100%;min-height:90px;font-family:var(--font-num);font-size:.78rem;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--fg);resize:vertical}
+  .improw{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  #btnImportApply{font:inherit;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer}
+  .imptip{font-size:.78rem;color:var(--muted)}
+  footer.note{color:var(--faint);font-size:.76rem;text-align:center;margin-top:28px;line-height:1.6}
+  @media (prefers-reduced-motion:no-preference){.day,.gear,.nav button,.today-btn{transition:background .12s,border-color .12s,color .12s}}
+</style>
+
+<div class="wrap">
+  <header class="app">
+    <div class="brand">
+      <h1>Stundenrapport</h1>
+      <span class="sub">Arbeitszeit · Überstunden · Kilometer</span>
+    </div>
+    <button class="gear" id="gearBtn" aria-expanded="false">⚙︎ Einstellungen <span class="pensum" id="pensumLabel"></span></button>
+  </header>
+
+  <div class="settings" id="settings">
+    <h3>Pensum & Sollzeit</h3>
+    <div class="row">
+      <div class="field"><label for="setWeekly">Wochenarbeitszeit (100 %)</label><input class="num" type="number" id="setWeekly" min="1" max="80" step="0.5"></div>
+      <div class="field"><label for="setPensum">Pensum (%)</label><input class="num" type="number" id="setPensum" min="1" max="100" step="1"></div>
+      <div class="soll">Wochen-Soll: <b id="setSoll"></b> Std.</div>
+    </div>
+    <h3 style="margin-top:18px">Backup (Daten sichern / übertragen)</h3>
+    <div class="backup">
+      <button id="btnExport">⬇ Backup exportieren</button>
+      <button id="btnImportToggle">⬆ Backup importieren</button>
+    </div>
+    <div id="importBox" hidden>
+      <textarea id="importText" placeholder="Backup-Text hier einfügen …"></textarea>
+      <div class="improw"><input type="file" id="importFile" accept="application/json,.json"><button id="btnImportApply">Importieren</button></div>
+      <div class="imptip" id="impTip">Ersetzt die aktuellen Daten in diesem Browser.</div>
+    </div>
+    <div class="imptip" style="margin-top:14px">Export legt alle Einträge in die Zwischenablage (und lädt lokal zusätzlich eine Datei). Zum Übertragen auf eine andere Adresse: dort „importieren" und den Text einfügen.</div>
+    <button class="reset" id="resetBtn" style="margin-top:16px">Alle Daten löschen</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="monthbar">
+      <div class="label" id="monthLabel"></div>
+      <div class="nav"><button id="prevM" aria-label="Vorheriger Monat">‹</button><button id="nextM" aria-label="Nächster Monat">›</button></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="seg"><button id="segCal" class="active">Kalender</button><button id="segRep">Auswertung</button></div>
+      <button class="today-btn" id="toToday">Heute</button>
+    </div>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="cal">
+    <div class="dow"><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <details class="weeks-wrap" id="weeksWrap" open>
+    <summary class="weeks-sum"><span class="chev">▶</span> Wochenauswertung <span class="ssaldo" id="ssaldo"></span></summary>
+    <div class="weeks-body" id="weeks"></div>
+    <div class="wk-note">Überstunden pro Kalenderwoche (Mo–So). Bei monatsübergreifenden Wochen zählen nur die Tage dieses Monats; das Soll wird anteilig nach Kalendertagen gerechnet (Tagessoll = Wochensoll ÷ 7).</div>
+  </details>
+
+  <div id="reportView" hidden>
+    <div class="rbar">
+      <button id="pickRange">📅 Zeitraum: <span id="rangeLabel"></span></button>
+      <button id="copyRange">⧉ Kopieren</button>
+      <button id="printRep">🖨 Drucken / PDF</button>
+      <button id="exportCsv">⭳ CSV</button>
+    </div>
+    <h2 class="report-title" id="reportTitle"></h2>
+    <div class="report-wrap"><div class="report-scroll" id="reportBody"></div></div>
+    <p class="rnote">Eine Zeile pro Position zum Eintippen und einem Fall zuordnen. „Kopieren" legt Datum, Zeit, Stunden, Fall und km tab-getrennt in die Zwischenablage (einfügbar z. B. in Excel). Drucken/PDF und CSV-Export funktionieren in der lokal gespeicherten Datei (online sind Drucken und Datei-Download gesperrt).</p>
+  </div>
+
+  <footer class="note">Daten werden lokal in diesem Browser gespeichert. · Erstellt mit Claude Code.</footer>
+</div>
+
+<div class="backdrop" id="rangeBackdrop"></div>
+<div class="modal" id="rangeModal" role="dialog" aria-modal="true" aria-labelledby="rangeTitle">
+  <header>
+    <div><div class="mt" id="rangeTitle">Zeitraum wählen</div><div class="md">Von–bis für die Auswertung</div></div>
+    <button class="close" id="rangeClose" aria-label="Schliessen">✕</button>
+  </header>
+  <div class="body">
+    <div class="rpresets">
+      <button type="button" data-preset="thisMonth">Dieser Monat</button>
+      <button type="button" data-preset="lastMonth">Letzter Monat</button>
+      <button type="button" data-preset="thisYear">Dieses Jahr</button>
+    </div>
+    <div class="rdates">
+      <div class="field"><label for="rangeStart">von</label><input type="date" id="rangeStart"></div>
+      <div class="field"><label for="rangeEnd">bis</label><input type="date" id="rangeEnd"></div>
+    </div>
+    <div class="rwarn" id="rangeWarn" hidden>Das Startdatum liegt nach dem Enddatum.</div>
+  </div>
+  <div class="foot"><button class="done" id="rangeApply">Anzeigen</button></div>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <header>
+    <div><div class="mt" id="modalTitle"></div><div class="md" id="modalDate"></div></div>
+    <button class="close" id="modalClose" aria-label="Schliessen">✕</button>
+  </header>
+  <div class="body" id="modalBody"></div>
+  <div class="foot">
+    <button class="addbtn" id="addEntry">＋ Neuer Eintrag</button>
+    <span class="daytot">Tagestotal: <b id="dayTotal">0.00 h</b></span>
+    <button class="savebtn" id="doneBtn">Speichern</button>
+  </div>
+</div>
+
+<script>
+const KEY="stundenrapport_v1";
+const MONTHS=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+const WDAYS=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
+const EVCOL=["var(--ev1)","var(--ev2)","var(--ev3)","var(--ev4)","var(--ev5)","var(--ev6)"];
+const DEFAULTS={weekly:42,pensum:80};
+
+let state={data:{},settings:{...DEFAULTS},seeded:false};
+let view=new Date(); view.setDate(1);
+let openKey=null;
+let viewMode="cal";
+let reportRange=null, rangeCustom=false;
+
+/* ---------- Persistenz ---------- */
+function load(){
+  try{const raw=localStorage.getItem(KEY); if(raw){const p=JSON.parse(raw);
+    state.data=p.data||{}; state.settings={...DEFAULTS,...(p.settings||{})}; state.seeded=!!p.seeded; return true;}
+  }catch(e){}
+  return false;
+}
+function save(){ try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){} }
+
+/* ---------- Helpers ---------- */
+const pad=n=>String(n).padStart(2,"0");
+const keyOf=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function parseMin(t){ if(!t||!/^\d{1,2}:\d{2}$/.test(t))return null; const[h,m]=t.split(":").map(Number); if(h>23||m>59)return null; return h*60+m; }
+function terminMin(e){ const a=parseMin(e.from),b=parseMin(e.to); if(a==null||b==null||b<=a)return 0; return b-a; }
+function wegMin(e){ return parseMin(e.weg)||0; }
+function entryMin(e){ return terminMin(e)+wegMin(e); }
+function isEmpty(e){ return !e.from && !e.to && !(e.task&&e.task.trim()) && !(e.km&&Number(e.km)>0) && !(e.weg&&parseMin(e.weg)); }
+function dayEntries(key){ return (state.data[key]||[]).filter(e=>!isEmpty(e)); }
+function dayMin(key){ return (state.data[key]||[]).reduce((s,e)=>s+entryMin(e),0); }
+function dayKm(key){ return (state.data[key]||[]).reduce((s,e)=>s+(Number(e.km)||0),0); }
+const fmtH=min=>(min/60).toLocaleString("de-CH",{minimumFractionDigits:1,maximumFractionDigits:2});
+const fmtH2=min=>(min/60).toLocaleString("de-CH",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtKm=n=>n.toLocaleString("de-CH",{maximumFractionDigits:1});
+const fmtSign=min=>{const v=min/60; const s=Math.abs(v).toLocaleString("de-CH",{minimumFractionDigits:1,maximumFractionDigits:2}); return (v>0?"+":v<0?"−":"")+s;};
+function sollMin(){ return Math.round(state.settings.weekly*(state.settings.pensum/100)*60); }
+function mondayOf(d){ const x=new Date(d); const off=(x.getDay()+6)%7; x.setDate(x.getDate()-off); x.setHours(0,0,0,0); return x; }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function isoWeek(d){
+  const date=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const dn=(date.getUTCDay()+6)%7; date.setUTCDate(date.getUTCDate()-dn+3);
+  const firstThu=new Date(Date.UTC(date.getUTCFullYear(),0,4));
+  const fdn=(firstThu.getUTCDay()+6)%7; firstThu.setUTCDate(firstThu.getUTCDate()-fdn+3);
+  return 1+Math.round((date-firstThu)/6048e5);
+}
+function weekMin(monday){ let s=0; for(let i=0;i<7;i++) s+=dayMin(keyOf(addDays(monday,i))); return s; }
+function sortedEntries(key){ return dayEntries(key).slice().sort((a,b)=>(parseMin(a.from)??9999)-(parseMin(b.from)??9999)); }
+
+/* ---------- Rendering ---------- */
+function render(){
+  const y=view.getFullYear(), m=view.getMonth();
+  document.getElementById("monthLabel").textContent=`${MONTHS[m]} ${y}`;
+  document.getElementById("pensumLabel").textContent=`· ${state.settings.weekly} h · ${state.settings.pensum}% · Soll ${fmtH(sollMin())} h/Woche · ${fmtH(Math.round(sollMin()/4))} h/Tag`;
+  renderTiles(y,m);
+  if(viewMode==="cal"){ renderGrid(y,m); renderWeeks(y,m); }
+  else { renderReport(); }
+}
+function setView(mode){
+  viewMode=mode; const cal=mode==="cal";
+  document.getElementById("segCal").classList.toggle("active",cal);
+  document.getElementById("segRep").classList.toggle("active",!cal);
+  document.querySelector(".cal").hidden=!cal;
+  document.getElementById("weeksWrap").hidden=!cal;
+  document.getElementById("reportView").hidden=cal;
+  document.querySelector(".monthbar").hidden=!cal;
+  document.getElementById("toToday").hidden=!cal;
+  document.getElementById("tiles").hidden=!cal;
+  if(!cal && !rangeCustom) reportRange=monthRange(view);
+  render();
+}
+
+// Alle Wochen, die diesen Monat berühren (Woche der 1. bis Woche des letzten Tags)
+function overlapWeeks(y,m){
+  const weeks=[]; let cur=mondayOf(new Date(y,m,1)); const last=new Date(y,m+1,0);
+  while(cur<=last){ weeks.push({monday:new Date(cur),kw:isoWeek(cur)}); cur=addDays(cur,7); }
+  return weeks;
+}
+// Nur die Tage dieses Monats zählen; Soll anteilig nach Kalendertagen (Mo–So) = Wochensoll/7 pro Tag
+function weekMonthStats(monday,y,m){
+  let ist=0,km=0,n=0;
+  for(let i=0;i<7;i++){ const d=addDays(monday,i);
+    if(d.getFullYear()===y && d.getMonth()===m){
+      const k=keyOf(d); ist+=dayMin(k); km+=dayKm(k); n++;
+    }
+  }
+  return {ist,km,n,soll:Math.round((sollMin()/7)*n)};
+}
+
+function renderTiles(y,m){
+  let worked=0,km=0,days=0; const last=new Date(y,m+1,0).getDate();
+  for(let d=1;d<=last;d++){const k=keyOf(new Date(y,m,d)); const dm=dayMin(k); if(dm>0)days++; worked+=dm; km+=dayKm(k);}
+  const monthSoll=Math.round((sollMin()/7)*last);
+  const saldo=worked-monthSoll;
+  const cls=saldo>0?"pos":saldo<0?"neg":"";
+  document.getElementById("tiles").innerHTML=`
+    <div class="tile"><div class="k">Erfasste Stunden</div><div class="v">${fmtH(worked)}<small>h</small></div></div>
+    <div class="tile saldo ${cls}"><div class="k">Saldo</div><div class="v">${fmtSign(saldo)}<small>h</small></div></div>
+    <div class="tile"><div class="k">Kilometer</div><div class="v">${fmtKm(km)}<small>km</small></div></div>
+    <div class="tile"><div class="k">Arbeitstage</div><div class="v">${days}</div></div>`;
+}
+
+function renderGrid(y,m){
+  const grid=document.getElementById("grid"); grid.innerHTML="";
+  const todayK=keyOf(new Date());
+  const MAX=window.innerWidth<=720?4:8;
+  let cur=mondayOf(new Date(y,m,1)); const lastDay=new Date(y,m+1,0);
+  while(true){
+    for(let i=0;i<7;i++){
+      const d=addDays(cur,i), k=keyOf(d), out=d.getMonth()!==m, wknd=(i>=5);
+      const dm=dayMin(k), evs=sortedEntries(k);
+      const cell=document.createElement("button");
+      cell.className="day"+(out?" out":"")+(wknd?" wknd":"")+(k===todayK?" today":"");
+      cell.dataset.key=k;
+      let head=`<div class="dnrow"><span class="dn">${d.getDate()}</span>${dm>0?`<span class="dtot">${fmtH(dm)} h</span>`:""}</div>`;
+      let ev="";
+      const show=evs.slice(0,MAX);
+      show.forEach((e,idx)=>{
+        const label=(e.task&&e.task.trim())?e.task:(e.from?"Eintrag":"Eintrag");
+        const t=e.from||"";
+        ev+=`<div class="ev"><span class="bar" style="background:${EVCOL[idx%EVCOL.length]}"></span>`+
+            `<span class="evt">${esc(label)}</span>${t?`<span class="evtime">${t}</span>`:""}</div>`;
+      });
+      if(evs.length>MAX) ev+=`<div class="more">+${evs.length-MAX} mehr</div>`;
+      if(!evs.length) ev=`<div class="addhint">＋</div>`;
+      cell.innerHTML=head+`<div class="events">${ev}</div>`;
+      cell.addEventListener("click",()=>openEditor(k));
+      grid.appendChild(cell);
+    }
+    cur=addDays(cur,7);
+    if(cur>lastDay) break;
+  }
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function renderWeeks(y,m){
+  const weeks=overlapWeeks(y,m), box=document.getElementById("weeks");
+  let tIst=0,tSoll=0,tKm=0,rows="";
+  for(const wk of weeks){
+    const s=weekMonthStats(wk.monday,y,m), sal=s.ist-s.soll, sun=addDays(wk.monday,6);
+    tIst+=s.ist;tSoll+=s.soll;tKm+=s.km;
+    const sc=sal>0?"pos":sal<0?"neg":"";
+    const range=`${pad(wk.monday.getDate())}.${pad(wk.monday.getMonth()+1)}.–${pad(sun.getDate())}.${pad(sun.getMonth()+1)}.`;
+    rows+=`<tr><td><span class="kw">KW ${wk.kw}</span><span class="range">${range}</span></td>
+      <td>${fmtH(s.ist)}</td><td>${fmtH(s.soll)}</td><td class="saldo-cell ${sc}">${fmtSign(sal)}</td><td>${fmtKm(s.km)}</td></tr>`;
+  }
+  const tsal=tIst-tSoll, tsc=tsal>0?"pos":tsal<0?"neg":"";
+  box.innerHTML=`<table><thead><tr><th>Woche</th><th>Ist</th><th>Soll</th><th>Saldo</th><th>km</th></tr></thead>
+    <tbody>${rows||`<tr><td colspan="5" style="text-align:center;color:var(--muted)">Keine Wochen</td></tr>`}</tbody>
+    <tfoot><tr><td>Total</td><td>${fmtH(tIst)}</td><td>${fmtH(tSoll)}</td>
+      <td class="saldo-cell ${tsc}">${fmtSign(tsal)}</td><td>${fmtKm(tKm)}</td></tr></tfoot></table>`;
+  const ss=document.getElementById("ssaldo"); ss.textContent=fmtSign(tsal)+" h"; ss.className="ssaldo "+tsc;
+}
+
+/* ---------- Auswertung (tagesbasiert, pro Position) ---------- */
+function monthRange(d){ const y=d.getFullYear(),m=d.getMonth(); return {start:new Date(y,m,1),end:new Date(y,m+1,0)}; }
+function fmtDate(d){ return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`; }
+function reportDays(){
+  const days=[]; let cur=new Date(reportRange.start); cur.setHours(0,0,0,0);
+  const end=new Date(reportRange.end); end.setHours(0,0,0,0);
+  while(cur<=end){ const evs=sortedEntries(keyOf(cur)); if(evs.length) days.push({dt:new Date(cur),evs}); cur=addDays(cur,1); }
+  return days;
+}
+function posLine(dt,e){
+  return `${fmtDate(dt)}\t${e.from||""}\t${e.to||""}\t${fmtH2(terminMin(e))}\t${wegMin(e)?fmtH2(wegMin(e)):""}\t${(e.task||"").replace(/\s+/g," ").trim()}\t${Number(e.km)||0}`;
+}
+function renderReport(){
+  const days=reportDays(), box=document.getElementById("reportBody");
+  document.getElementById("rangeLabel").textContent=`${fmtDate(reportRange.start)} – ${fmtDate(reportRange.end)}`;
+  document.getElementById("reportTitle").textContent=`Stundenrapport — ${fmtDate(reportRange.start)} – ${fmtDate(reportRange.end)}`;
+  if(!days.length){ box.innerHTML=`<div class="report-empty">Keine Einträge in diesem Zeitraum.</div>`; return; }
+  let rows="",mT=0,mW=0,mKm=0,nPos=0; const flat=[];
+  const tagessoll=Math.round(sollMin()/4);
+  for(const {dt,evs} of days){
+    rows+=`<tr class="rday"><td colspan="9">${WDAYS[dt.getDay()]}, ${fmtDate(dt)}</td></tr>`;
+    let dT=0,dW=0,dKm=0;
+    for(const e of evs){
+      const tm=terminMin(e), wm=wegMin(e), km=Number(e.km)||0;
+      dT+=tm;dW+=wm;dKm+=km;mT+=tm;mW+=wm;mKm+=km;nPos++; flat.push({dt,e});
+      rows+=`<tr><td class="rt">${e.from||"—"}</td><td class="rt">${e.to||"—"}</td>`+
+        `<td class="rh">${fmtH2(tm)}</td><td class="rw">${wm>0?fmtH2(wm):"–"}</td><td class="rtot">${fmtH2(tm+wm)}</td><td></td>`+
+        `<td class="rfall">${esc(e.task||"")}</td>`+
+        `<td class="rkm">${km?fmtKm(km):"0"}</td>`+
+        `<td class="rcopy"><button class="cpos" title="Position kopieren">⧉</button></td></tr>`;
+    }
+    const dSal=(dT+dW)-tagessoll, dsc=dSal>0?"pos":dSal<0?"neg":"";
+    rows+=`<tr class="rsub"><td colspan="2">Tagestotal</td><td class="rh">${fmtH2(dT)}</td><td class="rw">${dW>0?fmtH2(dW):"–"}</td><td class="rtot">${fmtH2(dT+dW)}</td><td class="rsaldo ${dsc}">${fmtSign(dSal)} h</td><td></td><td class="rkm">${fmtKm(dKm)}</td><td></td></tr>`;
+  }
+  const daysInRange=Math.round((reportRange.end-reportRange.start)/864e5)+1, footerSoll=Math.round((sollMin()/7)*daysInRange);
+  const fSal=(mT+mW)-footerSoll, fsc=fSal>0?"pos":fSal<0?"neg":"";
+  box.innerHTML=`<table class="report"><thead><tr><th>von</th><th>bis</th><th class="rnum">Std</th><th class="rnum">Weg</th><th class="rnum">Total</th><th class="rnum">Saldo</th><th>Fall</th><th class="rnum">km</th><th></th></tr></thead>`+
+    `<tbody>${rows}</tbody>`+
+    `<tfoot><tr><td colspan="2">Total · ${nPos} Pos.</td><td class="rh">${fmtH2(mT)}</td><td class="rw">${fmtH2(mW)}</td><td class="rtot">${fmtH2(mT+mW)}</td><td class="rsaldo ${fsc}">${fmtSign(fSal)} h</td><td></td><td class="rkm">${fmtKm(mKm)}</td><td></td></tr></tfoot></table>`;
+  box.querySelectorAll(".cpos").forEach((b,i)=>{ const {dt,e}=flat[i]; b.onclick=()=>copyText(posLine(dt,e),b); });
+}
+function rangeTSV(){
+  const out=["Datum\tvon\tbis\tStd\tWeg\tFall\tkm"];
+  for(const {dt,evs} of reportDays()) for(const e of evs) out.push(posLine(dt,e));
+  return out.join("\n");
+}
+function exportCSV(){
+  const q=s=>`"${String(s).replace(/"/g,'""')}"`, lines=["Datum;Wochentag;von;bis;Std;Weg;Fall;km"];
+  for(const {dt,evs} of reportDays()) for(const e of evs)
+    lines.push([fmtDate(dt),WDAYS[dt.getDay()],e.from||"",e.to||"",fmtH2(terminMin(e)),wegMin(e)?fmtH2(wegMin(e)):"",q(e.task||""),Number(e.km)||0].join(";"));
+  const csv="﻿"+lines.join("\r\n"), blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+  const url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download=`Stundenrapport_${keyOf(reportRange.start)}_bis_${keyOf(reportRange.end)}.csv`; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+function copyText(text,btn){
+  const ok=()=>{ if(btn){const o=btn.textContent;btn.textContent="✓";setTimeout(()=>btn.textContent=o,1000);} };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok).catch(()=>fallbackCopy(text,ok));
+  else fallbackCopy(text,ok);
+}
+function fallbackCopy(text,cb){ try{const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";
+  document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);cb&&cb();}catch(e){} }
+
+/* ---------- Backup (Export / Import) ---------- */
+function exportBackup(btn){
+  const payload=JSON.stringify({app:"stundenrapport",v:1,exported:new Date().toISOString(),settings:state.settings,data:state.data});
+  copyText(payload,btn);
+  try{ const blob=new Blob([payload],{type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement("a");
+    a.href=url; a.download=`stundenrapport-backup-${keyOf(new Date())}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+  }catch(e){}
+}
+function applyImport(){
+  const tip=document.getElementById("impTip"), raw=document.getElementById("importText").value.trim();
+  const say=(m,ok)=>{ tip.textContent=m; tip.style.color=ok?"var(--pos)":"var(--neg)"; };
+  if(!raw){ say("Bitte Backup-Text einfügen oder Datei wählen.",false); return; }
+  let obj; try{ obj=JSON.parse(raw); }catch(e){ say("Ungültiger Text — das ist kein gültiges Backup.",false); return; }
+  if(!obj || typeof obj.data!=="object" || obj.data===null){ say("Keine gültigen Daten gefunden.",false); return; }
+  state.data=obj.data;
+  if(obj.settings) state.settings={...DEFAULTS,...obj.settings};
+  state.seeded=true; save();
+  setWeekly.value=state.settings.weekly; setPensum.value=state.settings.pensum; refreshSoll();
+  const n=Object.keys(state.data).length;
+  render();
+  say(`Import erfolgreich ✓ (${n} Tage übernommen).`,true);
+}
+
+/* ---------- Zeitraum-Dialog ---------- */
+function openRange(){
+  document.getElementById("rangeStart").value=keyOf(reportRange.start);
+  document.getElementById("rangeEnd").value=keyOf(reportRange.end);
+  document.getElementById("rangeWarn").hidden=true;
+  document.getElementById("rangeBackdrop").classList.add("open");
+  document.getElementById("rangeModal").classList.add("open");
+}
+function closeRange(){ document.getElementById("rangeBackdrop").classList.remove("open"); document.getElementById("rangeModal").classList.remove("open"); }
+function applyRange(){
+  const sv=document.getElementById("rangeStart").value, ev=document.getElementById("rangeEnd").value, warn=document.getElementById("rangeWarn");
+  if(!sv||!ev){ warn.textContent="Bitte Start- und Enddatum wählen."; warn.hidden=false; return; }
+  const s=new Date(sv+"T00:00:00"), e=new Date(ev+"T00:00:00");
+  if(s>e){ warn.textContent="Das Startdatum liegt nach dem Enddatum."; warn.hidden=false; return; }
+  reportRange={start:s,end:e}; rangeCustom=true; closeRange(); render();
+}
+
+/* ---------- Editor ---------- */
+function openEditor(key){
+  openKey=key;
+  if(!state.data[key]) state.data[key]=[];
+  const d=new Date(key+"T00:00:00");
+  const wd=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"][d.getDay()];
+  document.getElementById("modalTitle").textContent=`${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  document.getElementById("modalDate").textContent=`${wd} · KW ${isoWeek(d)}`;
+  renderModalBody();
+  document.getElementById("backdrop").classList.add("open");
+  document.getElementById("modal").classList.add("open");
+}
+function renderModalBody(){
+  const arr=state.data[openKey]||[], body=document.getElementById("modalBody");
+  if(!arr.length){ body.innerHTML=`<div class="noentries">Noch keine Einträge. Füge mit „＋ Neuer Eintrag" den ersten hinzu.</div>`; }
+  else{
+    body.innerHTML=arr.map((e,i)=>{
+      const tm=terminMin(e), wm=wegMin(e), invalid=(e.from&&e.to&&tm===0);
+      const calc=tm>0?`${fmtH2(tm)} h`:(invalid?"⚠":"—");
+      return `<div class="entry" data-i="${i}">
+        <div class="erow">
+          <div class="field time"><label>von</label><input type="time" value="${e.from||""}" data-f="from"></div>
+          <div class="field time"><label>bis</label><input type="time" value="${e.to||""}" data-f="to"></div>
+          <div class="calc ${invalid?"bad":""}">${calc}</div>
+          <button class="del" title="Eintrag löschen" data-del="${i}">🗑</button>
+        </div>
+        <div class="field task">
+          <div class="taskrow"><label>Tätigkeit</label><span class="wc">${(e.task||"").length}/60</span></div>
+          <input type="text" maxlength="60" value="${esc(e.task||"")}" data-f="task" placeholder="Tätigkeit eingeben">
+        </div>
+        <div class="erow erow-bot">
+          <div class="field km"><label>km</label><input type="number" min="0" step="1" value="${e.km??""}" data-f="km" placeholder="0"></div>
+          <div class="field weg"><label>Weg (Std:Min)</label><input type="time" value="${e.weg||""}" data-f="weg"></div>
+          <div class="wcalc">${wm>0?`+${fmtH2(wm)} h`:""}</div>
+          <div class="etot">Total ${fmtH2(tm+wm)} h</div>
+        </div>
+      </div>`;
+    }).join("");
+    body.querySelectorAll(".entry").forEach(row=>{
+      const i=+row.dataset.i;
+      row.querySelectorAll("input").forEach(inp=>{
+        inp.addEventListener("input",()=>{
+          const f=inp.dataset.f;
+          state.data[openKey][i][f]=inp.value; state.data[openKey][i]._ex=false;
+          if(f==="task") row.querySelector(".wc").textContent=`${inp.value.length}/60`;
+          if(f==="from"||f==="to"){
+            const e=state.data[openKey][i], tm=terminMin(e), invalid=(e.from&&e.to&&tm===0);
+            const c=row.querySelector(".calc"); c.textContent=tm>0?`${fmtH2(tm)} h`:(invalid?"⚠":"—"); c.classList.toggle("bad",invalid);
+          }
+          if(f==="weg"){
+            const wm=wegMin(state.data[openKey][i]), wc=row.querySelector(".wcalc");
+            if(wc) wc.textContent=wm>0?`+${fmtH2(wm)} h`:"";
+          }
+          const et=row.querySelector(".etot"); if(et) et.textContent=`Total ${fmtH2(entryMin(state.data[openKey][i]))} h`;
+          save(); updateDayTotal(); render();
+        });
+        inp.addEventListener("keydown",ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); closeEditor(); } });
+      });
+      row.querySelector(".del").addEventListener("click",()=>{
+        state.data[openKey].splice(i,1); save(); renderModalBody(); updateDayTotal(); render();
+      });
+    });
+  }
+  updateDayTotal();
+  document.getElementById("addEntry").disabled=(arr.length>=8);
+}
+function updateDayTotal(){ document.getElementById("dayTotal").textContent=fmtH2(dayMin(openKey))+" h"; }
+function closeEditor(){
+  if(openKey && state.data[openKey]){
+    state.data[openKey]=state.data[openKey].filter(e=>!isEmpty(e));
+    if(!state.data[openKey].length) delete state.data[openKey];
+    save();
+  }
+  document.getElementById("backdrop").classList.remove("open");
+  document.getElementById("modal").classList.remove("open");
+  openKey=null; render();
+}
+
+/* ---------- Events ---------- */
+document.getElementById("prevM").onclick=()=>{view.setMonth(view.getMonth()-1);render();};
+document.getElementById("nextM").onclick=()=>{view.setMonth(view.getMonth()+1);render();};
+document.getElementById("toToday").onclick=()=>{view=new Date();view.setDate(1);render();};
+document.getElementById("segCal").onclick=()=>setView("cal");
+document.getElementById("segRep").onclick=()=>setView("report");
+document.getElementById("pickRange").onclick=openRange;
+document.getElementById("rangeClose").onclick=closeRange;
+document.getElementById("rangeBackdrop").onclick=closeRange;
+document.getElementById("rangeApply").onclick=applyRange;
+document.querySelectorAll(".rpresets button").forEach(b=>b.onclick=()=>{
+  const t=new Date(); let s,e; const p=b.dataset.preset;
+  if(p==="thisMonth"){s=new Date(t.getFullYear(),t.getMonth(),1);e=new Date(t.getFullYear(),t.getMonth()+1,0);}
+  else if(p==="lastMonth"){s=new Date(t.getFullYear(),t.getMonth()-1,1);e=new Date(t.getFullYear(),t.getMonth(),0);}
+  else {s=new Date(t.getFullYear(),0,1);e=new Date(t.getFullYear(),11,31);}
+  document.getElementById("rangeStart").value=keyOf(s); document.getElementById("rangeEnd").value=keyOf(e);
+  document.getElementById("rangeWarn").hidden=true;
+});
+document.getElementById("copyRange").onclick=e=>copyText(rangeTSV(),e.currentTarget);
+document.getElementById("printRep").onclick=()=>window.print();
+document.getElementById("exportCsv").onclick=()=>exportCSV();
+document.getElementById("addEntry").onclick=()=>{
+  if(!state.data[openKey])state.data[openKey]=[];
+  if(state.data[openKey].length>=8)return;
+  state.data[openKey].push({from:"",to:"",task:"",km:""}); save(); renderModalBody();
+};
+document.getElementById("doneBtn").onclick=closeEditor;
+document.getElementById("modalClose").onclick=closeEditor;
+document.getElementById("backdrop").onclick=closeEditor;
+document.addEventListener("keydown",e=>{ if(e.key!=="Escape")return; if(openKey)closeEditor(); else if(document.getElementById("rangeModal").classList.contains("open"))closeRange(); });
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Enter"||e.shiftKey)return;
+  if(openKey && document.getElementById("modal").classList.contains("open")){
+    if(e.target && e.target.tagName==="BUTTON") return; // Buttons machen ihre eigene Aktion
+    e.preventDefault(); closeEditor();
+  }
+});
+
+const gearBtn=document.getElementById("gearBtn"), settings=document.getElementById("settings");
+gearBtn.onclick=()=>{const o=settings.classList.toggle("open");gearBtn.setAttribute("aria-expanded",o);};
+const setWeekly=document.getElementById("setWeekly"), setPensum=document.getElementById("setPensum"), setSoll=document.getElementById("setSoll");
+function refreshSoll(){ setSoll.textContent=fmtH(sollMin()); }
+setWeekly.oninput=()=>{state.settings.weekly=Math.max(0.5,Number(setWeekly.value)||0);refreshSoll();save();render();};
+setPensum.oninput=()=>{state.settings.pensum=Math.min(100,Math.max(1,Number(setPensum.value)||0));refreshSoll();save();render();};
+document.getElementById("resetBtn").onclick=()=>{
+  state.data={};state.seeded=true;save();render();settings.classList.remove("open");gearBtn.setAttribute("aria-expanded",false);
+};
+document.getElementById("btnExport").onclick=e=>exportBackup(e.currentTarget);
+document.getElementById("btnImportToggle").onclick=()=>{const b=document.getElementById("importBox");b.hidden=!b.hidden;};
+document.getElementById("importFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{document.getElementById("importText").value=r.result;};r.readAsText(f);};
+document.getElementById("btnImportApply").onclick=applyImport;
+let rt; window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(()=>{if(viewMode==="cal")renderGrid(view.getFullYear(),view.getMonth());},150);});
+
+/* ---------- Seed ---------- */
+function seed(){
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  const mk=day=>keyOf(new Date(y,m,day));
+  const ex=(from,to,task,km)=>({from,to,task,km,_ex:true});
+  const last=new Date(y,m+1,0).getDate();
+  const d1=Math.min(2,last);
+  state.data[mk(d1)]=[ex("08:00","12:00","Dreh Kundenprojekt",24),ex("13:00","17:30","Schnitt & Export","")];
+  state.data[mk(Math.min(d1+1,last))]=[ex("09:00","12:30","Konzept Meeting",12)];
+  if(last>=10) state.data[mk(10)]=[ex("07:30","11:30","Setaufbau",38),ex("12:30","16:00","Interview",0)];
+  state.seeded=true; save();
+}
+
+/* ---------- Init ---------- */
+if(!load()){ seed(); }
+setWeekly.value=state.settings.weekly; setPensum.value=state.settings.pensum; refreshSoll();
+reportRange=monthRange(view);
+render();
+</script>
+</body>
+</html>
