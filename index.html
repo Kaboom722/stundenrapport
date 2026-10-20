@@ -106,6 +106,9 @@
   .day.today .dn{background:var(--today);color:#fff}
   .day .dtot{font-family:var(--font-num);font-size:.6rem;font-weight:600;color:var(--accent)}
   .day.today .dtot{color:var(--today)}
+  .day .holi{font-size:.6rem;font-weight:700;color:var(--ev4);background:var(--surface-2);border-left:2px solid var(--ev4);
+    border-radius:3px;padding:1px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .day .holi.off{color:var(--muted);border-left-color:var(--line);font-weight:600}
   .events{display:flex;flex-direction:column;gap:2px;min-height:0;min-width:0}
   .ev{display:flex;align-items:center;gap:4px;background:var(--surface-2);border-radius:4px;padding:1px 4px 1px 3px;min-width:0}
   .ev .bar{width:2px;align-self:stretch;min-height:11px;border-radius:2px;flex:0 0 auto;background:var(--ev1)}
@@ -497,6 +500,34 @@ function setView(mode){
 }
 
 // Alle Wochen, die diesen Monat berühren (Woche der 1. bis Woche des letzten Tags)
+/* ---------- Feiertage (Kanton Zürich) ---------- */
+function easterSunday(y){
+  const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),
+    g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,
+    l=(32+2*e+2*i-h-k)%7,mm=Math.floor((a+11*h+22*l)/451),
+    mo=Math.floor((h+l-7*mm+114)/31),da=((h+l-7*mm+114)%31)+1;
+  return new Date(y,mo-1,da);
+}
+const _holiCache={};
+function holidaysOf(y){
+  if(_holiCache[y]) return _holiCache[y];
+  const e=easterSunday(y), map={}, add=(d,name)=>{ map[keyOf(d)]=name; };
+  add(new Date(y,0,1),"Neujahr");
+  add(new Date(y,0,2),"Berchtoldstag");
+  add(addDays(e,-2),"Karfreitag");
+  add(addDays(e,1),"Ostermontag");
+  add(new Date(y,4,1),"Tag der Arbeit");
+  add(addDays(e,39),"Auffahrt");
+  add(addDays(e,50),"Pfingstmontag");
+  add(new Date(y,7,1),"Bundesfeier");
+  add(new Date(y,11,25),"Weihnachten");
+  add(new Date(y,11,26),"Stephanstag");
+  return _holiCache[y]=map;
+}
+function holidayName(d){ return holidaysOf(d.getFullYear())[keyOf(d)]||null; }
+function isWeekdayHoliday(d){ const dow=d.getDay(); return (dow>=1&&dow<=5)?holidayName(d):null; } // nur Mo–Fr zählen
+function holidayCreditMin(){ return Math.round(sollMin()/4); } // 8.4 h pro Werktags-Feiertag (Wochensoll ÷ 4)
+
 function overlapWeeks(y,m){
   const weeks=[]; let cur=mondayOf(new Date(y,m,1)); const last=new Date(y,m+1,0);
   while(cur<=last){ weeks.push({monday:new Date(cur),kw:isoWeek(cur)}); cur=addDays(cur,7); }
@@ -504,19 +535,21 @@ function overlapWeeks(y,m){
 }
 // Nur die Tage dieses Monats zählen; Soll anteilig nach Kalendertagen (Mo–So) = Wochensoll/7 pro Tag
 function weekMonthStats(monday,y,m){
-  let ist=0,km=0,n=0;
+  let ist=0,km=0,n=0,hol=0;
   for(let i=0;i<7;i++){ const d=addDays(monday,i);
     if(d.getFullYear()===y && d.getMonth()===m){
       const k=keyOf(d); ist+=dayMin(k); km+=dayKm(k); n++;
+      if(isWeekdayHoliday(d)) hol++;
     }
   }
-  return {ist,km,n,soll:Math.round((sollMin()/7)*n)};
+  const soll=Math.max(0, Math.round((sollMin()/7)*n) - holidayCreditMin()*hol);
+  return {ist,km,n,hol,soll};
 }
 
 function renderTiles(y,m){
-  let worked=0,km=0,days=0; const last=new Date(y,m+1,0).getDate();
-  for(let d=1;d<=last;d++){const k=keyOf(new Date(y,m,d)); const dm=dayMin(k); if(dm>0)days++; worked+=dm; km+=dayKm(k);}
-  const monthSoll=Math.round((sollMin()/7)*last);
+  let worked=0,km=0,days=0,hol=0; const last=new Date(y,m+1,0).getDate();
+  for(let d=1;d<=last;d++){const dt=new Date(y,m,d), k=keyOf(dt); const dm=dayMin(k); if(dm>0)days++; worked+=dm; km+=dayKm(k); if(isWeekdayHoliday(dt))hol++;}
+  const monthSoll=Math.max(0, Math.round((sollMin()/7)*last) - holidayCreditMin()*hol);
   const saldo=worked-monthSoll;
   const cls=saldo>0?"pos":saldo<0?"neg":"";
   document.getElementById("tiles").innerHTML=`
@@ -539,6 +572,8 @@ function renderGrid(y,m){
       cell.className="day"+(out?" out":"")+(wknd?" wknd":"")+(k===todayK?" today":"");
       cell.dataset.key=k;
       let head=`<div class="dnrow"><span class="dn">${d.getDate()}</span>${dm>0?`<span class="dtot">${fmtH(dm)} h</span>`:""}</div>`;
+      const hn=holidayName(d);
+      if(hn){ const wd=(d.getDay()>=1&&d.getDay()<=5); head+=`<div class="holi${wd?"":" off"}" title="${esc(hn)}${wd?"":" (Wochenende – nicht gerechnet)"}">${esc(hn)}</div>`; }
       let ev="";
       const show=evs.slice(0,MAX);
       show.forEach((e,idx)=>{
@@ -598,7 +633,8 @@ function renderReport(){
   let rows="",mT=0,mW=0,mKm=0,nPos=0; const flat=[];
   const tagessoll=Math.round(sollMin()/4);
   for(const {dt,evs} of days){
-    rows+=`<tr class="rday"><td colspan="9">${WDAYS[dt.getDay()]}, ${fmtDate(dt)}</td></tr>`;
+    const hn=holidayName(dt);
+    rows+=`<tr class="rday"><td colspan="9">${WDAYS[dt.getDay()]}, ${fmtDate(dt)}${hn?` · <span style="color:var(--ev4)">Feiertag: ${esc(hn)}</span>`:""}</td></tr>`;
     let dT=0,dW=0,dKm=0;
     for(const e of evs){
       const tm=terminMin(e), wm=wegMin(e), km=Number(e.km)||0;
@@ -609,10 +645,13 @@ function renderReport(){
         `<td class="rkm">${km?fmtKm(km):"0"}</td>`+
         `<td class="rcopy"><button class="cpos" title="Position kopieren">⧉</button></td></tr>`;
     }
-    const dSal=(dT+dW)-tagessoll, dsc=dSal>0?"pos":dSal<0?"neg":"";
+    const dts=isWeekdayHoliday(dt)?0:tagessoll;
+    const dSal=(dT+dW)-dts, dsc=dSal>0?"pos":dSal<0?"neg":"";
     rows+=`<tr class="rsub"><td colspan="2">Tagestotal</td><td class="rh">${fmtH2(dT)}</td><td class="rw">${dW>0?fmtH2(dW):"–"}</td><td class="rtot">${fmtH2(dT+dW)}</td><td class="rsaldo ${dsc}">${fmtSign(dSal)} h</td><td></td><td class="rkm">${fmtKm(dKm)}</td><td></td></tr>`;
   }
-  const daysInRange=Math.round((reportRange.end-reportRange.start)/864e5)+1, footerSoll=Math.round((sollMin()/7)*daysInRange);
+  let holR=0; { let c=new Date(reportRange.start); c.setHours(0,0,0,0); const e2=new Date(reportRange.end); e2.setHours(0,0,0,0); while(c<=e2){ if(isWeekdayHoliday(c))holR++; c=addDays(c,1); } }
+  const daysInRange=Math.round((reportRange.end-reportRange.start)/864e5)+1;
+  const footerSoll=Math.max(0, Math.round((sollMin()/7)*daysInRange) - holidayCreditMin()*holR);
   const fSal=(mT+mW)-footerSoll, fsc=fSal>0?"pos":fSal<0?"neg":"";
   box.innerHTML=`<table class="report"><thead><tr><th>von</th><th>bis</th><th class="rnum">Std</th><th class="rnum">Weg</th><th class="rnum">Total</th><th class="rnum">Saldo</th><th>Fall</th><th class="rnum">km</th><th></th></tr></thead>`+
     `<tbody>${rows}</tbody>`+
