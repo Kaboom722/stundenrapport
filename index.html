@@ -562,7 +562,7 @@ function renderTiles(y,m){
 function renderGrid(y,m){
   const grid=document.getElementById("grid"); grid.innerHTML="";
   const todayK=keyOf(new Date());
-  const MAX=window.innerWidth<=720?4:8;
+  const MAX=window.innerWidth<=720?4:15;
   let cur=mondayOf(new Date(y,m,1)); const lastDay=new Date(y,m+1,0);
   while(true){
     for(let i=0;i<7;i++){
@@ -785,7 +785,7 @@ function renderModalBody(){
     });
   }
   updateDayTotal();
-  document.getElementById("addEntry").disabled=(arr.length>=8);
+  document.getElementById("addEntry").disabled=(arr.length>=15);
 }
 function updateDayTotal(){ document.getElementById("dayTotal").textContent=fmtH2(dayMin(openKey))+" h"; }
 function closeEditor(){
@@ -822,7 +822,7 @@ document.getElementById("printRep").onclick=()=>window.print();
 document.getElementById("exportCsv").onclick=()=>exportCSV();
 document.getElementById("addEntry").onclick=()=>{
   if(!state.data[openKey])state.data[openKey]=[];
-  if(state.data[openKey].length>=8)return;
+  if(state.data[openKey].length>=15)return;
   state.data[openKey].push({from:"",to:"",task:"",km:""}); save(); renderModalBody();
 };
 document.getElementById("doneBtn").onclick=closeEditor;
