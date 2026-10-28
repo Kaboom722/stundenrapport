@@ -158,6 +158,7 @@
   .rbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
   .rbar button{font:inherit;font-size:.82rem;font-weight:600;background:var(--surface);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px 13px;cursor:pointer}
   .rbar button:hover{border-color:var(--accent);color:var(--accent)}
+  .rbar button.active{background:var(--accent);border-color:var(--accent);color:#fff}
   .report-wrap{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
   .report-scroll{overflow-x:auto}
   table.report{width:100%;border-collapse:collapse;font-size:.86rem}
@@ -361,6 +362,7 @@
   <div id="reportView" hidden>
     <div class="rbar">
       <button id="pickRange">📅 Zeitraum: <span id="rangeLabel"></span></button>
+      <button id="kmFilter">🚗 Nur Fahrten (km)</button>
       <button id="copyRange">⧉ Kopieren</button>
       <button id="printRep">🖨 Drucken / PDF</button>
       <button id="exportCsv">⭳ CSV</button>
@@ -437,7 +439,7 @@ let state={data:{},settings:{...DEFAULTS},seeded:false};
 let view=new Date(); view.setDate(1);
 let openKey=null;
 let viewMode="cal";
-let reportRange=null, rangeCustom=false;
+let reportRange=null, rangeCustom=false, kmOnly=false;
 
 /* ---------- Persistenz ---------- */
 function load(){
@@ -619,17 +621,32 @@ function fmtDate(d){ return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getF
 function reportDays(){
   const days=[]; let cur=new Date(reportRange.start); cur.setHours(0,0,0,0);
   const end=new Date(reportRange.end); end.setHours(0,0,0,0);
-  while(cur<=end){ const evs=sortedEntries(keyOf(cur)); if(evs.length) days.push({dt:new Date(cur),evs}); cur=addDays(cur,1); }
+  while(cur<=end){ let evs=sortedEntries(keyOf(cur)); if(kmOnly) evs=evs.filter(e=>Number(e.km)>0); if(evs.length) days.push({dt:new Date(cur),evs}); cur=addDays(cur,1); }
   return days;
 }
 function posLine(dt,e){
   return `${fmtDate(dt)}\t${e.from||""}\t${e.to||""}\t${fmtH2(terminMin(e))}\t${wegMin(e)?fmtH2(wegMin(e)):""}\t${(e.task||"").replace(/\s+/g," ").trim()}\t${Number(e.km)||0}`;
 }
+function kmLine(dt,e){
+  return `${fmtDate(dt)}\t${e.from||""}\t${e.to||""}\t${(e.task||"").replace(/\s+/g," ").trim()}\t${Number(e.km)||0}`;
+}
 function renderReport(){
   const days=reportDays(), box=document.getElementById("reportBody");
   document.getElementById("rangeLabel").textContent=`${fmtDate(reportRange.start)} – ${fmtDate(reportRange.end)}`;
-  document.getElementById("reportTitle").textContent=`Stundenrapport — ${fmtDate(reportRange.start)} – ${fmtDate(reportRange.end)}`;
-  if(!days.length){ box.innerHTML=`<div class="report-empty">Keine Einträge in diesem Zeitraum.</div>`; return; }
+  document.getElementById("reportTitle").textContent=`${kmOnly?"Fahrten (km)":"Stundenrapport"} — ${fmtDate(reportRange.start)} – ${fmtDate(reportRange.end)}`;
+  if(!days.length){ box.innerHTML=`<div class="report-empty">${kmOnly?"Keine Fahrten mit Kilometern in diesem Zeitraum.":"Keine Einträge in diesem Zeitraum."}</div>`; return; }
+  if(kmOnly){
+    let rows="", tkm=0, nF=0; const flat=[];
+    for(const {dt,evs} of days){ for(const e of evs){ const km=Number(e.km)||0; tkm+=km; nF++; flat.push({dt,e});
+      rows+=`<tr><td class="rt">${fmtDate(dt)}</td><td class="rt">${e.from||"—"}</td><td class="rt">${e.to||"—"}</td>`+
+        `<td class="rfall">${esc(e.task||"")}</td><td class="rkm">${fmtKm(km)}</td>`+
+        `<td class="rcopy"><button class="cpos" title="Zeile kopieren">⧉</button></td></tr>`; } }
+    box.innerHTML=`<table class="report"><thead><tr><th>Datum</th><th>von</th><th>bis</th><th>Fall</th><th class="rnum">km</th><th></th></tr></thead>`+
+      `<tbody>${rows}</tbody>`+
+      `<tfoot><tr><td colspan="4">Total · ${nF} Fahrten</td><td class="rkm">${fmtKm(tkm)}</td><td></td></tr></tfoot></table>`;
+    box.querySelectorAll(".cpos").forEach((b,i)=>{ const {dt,e}=flat[i]; b.onclick=()=>copyText(kmLine(dt,e),b); });
+    return;
+  }
   let rows="",mT=0,mW=0,mKm=0,nPos=0; const flat=[];
   const tagessoll=Math.round(sollMin()/4);
   for(const {dt,evs} of days){
@@ -659,17 +676,27 @@ function renderReport(){
   box.querySelectorAll(".cpos").forEach((b,i)=>{ const {dt,e}=flat[i]; b.onclick=()=>copyText(posLine(dt,e),b); });
 }
 function rangeTSV(){
+  if(kmOnly){ const out=["Datum\tvon\tbis\tFall\tkm"]; for(const {dt,evs} of reportDays()) for(const e of evs) out.push(kmLine(dt,e)); return out.join("\n"); }
   const out=["Datum\tvon\tbis\tStd\tWeg\tFall\tkm"];
   for(const {dt,evs} of reportDays()) for(const e of evs) out.push(posLine(dt,e));
   return out.join("\n");
 }
 function exportCSV(){
-  const q=s=>`"${String(s).replace(/"/g,'""')}"`, lines=["Datum;Wochentag;von;bis;Std;Weg;Fall;km"];
-  for(const {dt,evs} of reportDays()) for(const e of evs)
-    lines.push([fmtDate(dt),WDAYS[dt.getDay()],e.from||"",e.to||"",fmtH2(terminMin(e)),wegMin(e)?fmtH2(wegMin(e)):"",q(e.task||""),Number(e.km)||0].join(";"));
+  const q=s=>`"${String(s).replace(/"/g,'""')}"`; let lines, name;
+  if(kmOnly){
+    lines=["Datum;Wochentag;von;bis;Fall;km"];
+    for(const {dt,evs} of reportDays()) for(const e of evs)
+      lines.push([fmtDate(dt),WDAYS[dt.getDay()],e.from||"",e.to||"",q(e.task||""),Number(e.km)||0].join(";"));
+    name="Fahrten";
+  } else {
+    lines=["Datum;Wochentag;von;bis;Std;Weg;Fall;km"];
+    for(const {dt,evs} of reportDays()) for(const e of evs)
+      lines.push([fmtDate(dt),WDAYS[dt.getDay()],e.from||"",e.to||"",fmtH2(terminMin(e)),wegMin(e)?fmtH2(wegMin(e)):"",q(e.task||""),Number(e.km)||0].join(";"));
+    name="Stundenrapport";
+  }
   const csv="﻿"+lines.join("\r\n"), blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
   const url=URL.createObjectURL(blob), a=document.createElement("a");
-  a.href=url; a.download=`Stundenrapport_${keyOf(reportRange.start)}_bis_${keyOf(reportRange.end)}.csv`; document.body.appendChild(a); a.click();
+  a.href=url; a.download=`${name}_${keyOf(reportRange.start)}_bis_${keyOf(reportRange.end)}.csv`; document.body.appendChild(a); a.click();
   document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
 function copyText(text,btn){
@@ -820,6 +847,7 @@ document.querySelectorAll(".rpresets button").forEach(b=>b.onclick=()=>{
 document.getElementById("copyRange").onclick=e=>copyText(rangeTSV(),e.currentTarget);
 document.getElementById("printRep").onclick=()=>window.print();
 document.getElementById("exportCsv").onclick=()=>exportCSV();
+document.getElementById("kmFilter").onclick=e=>{ kmOnly=!kmOnly; e.currentTarget.classList.toggle("active",kmOnly); render(); };
 document.getElementById("addEntry").onclick=()=>{
   if(!state.data[openKey])state.data[openKey]=[];
   if(state.data[openKey].length>=15)return;
